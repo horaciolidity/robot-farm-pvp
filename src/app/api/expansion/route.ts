@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   if (nextExpansion) {
     const userInventory = await prisma.inventory.findMany({ where: { userId: auth.sub } })
     const inventoryMap = Object.fromEntries(userInventory.map((i: any) => [i.resourceId, i.amount]))
-    canAfford = nextExpansion.costs.every(c => (inventoryMap[c.resourceId] ?? 0) >= c.amount)
+    canAfford = nextExpansion.costs.every((c: any) => (inventoryMap[c.resourceId] ?? 0) >= c.amount)
   }
 
   return ok({
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       ? {
           tier: nextExpansion.tier,
           slotsGranted: nextExpansion.slotsGranted,
-          costs: nextExpansion.costs.map(c => ({
+          costs: nextExpansion.costs.map((c: any) => ({
             resource: c.resource.name,
             icon: c.resource.icon,
             color: c.resource.color,
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   if (!expansion) return badRequest('Maximum expansion already reached')
 
-  const deductions = expansion.costs.map(c => ({ resourceId: c.resourceId, amount: c.amount }))
+  const deductions = expansion.costs.map((c: any) => ({ resourceId: c.resourceId, amount: c.amount }))
   const result = await deductResources(auth.sub, deductions)
 
   if (!result.success) {
