@@ -1,0 +1,406 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USERS & AVATARS
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  avatar       Avatar?
+  robots       Robot[]
+  inventory    Inventory[]
+  jobs         Job[]
+  achievements UserAchievement[]
+  marketOrders MarketOrder[]
+
+  @@map("users")
+}
+
+model Avatar {
+  id         String     @id @default(cuid())
+  userId     String     @unique
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name       String
+  avatarType AvatarType @default(ENGINEER)
+  imageId    String     @default("engineer_01")
+
+  level          Int   @default(1)
+  experience     Int   @default(0)
+  totalXP        Int   @default(0)
+
+  // Robot capacity
+  robotSlots     Int   @default(2)
+  expansionLevel Int   @default(0)
+
+  // Stats for rankings & unlock checks
+  totalProduced  Float @default(0)
+  totalJobs      Int   @default(0)
+  totalUpgrades  Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("avatars")
+}
+
+enum AvatarType {
+  ENGINEER
+  COMMANDER
+  HACKER
+  MERCHANT
+}
+
+// ============================================================
+// ROBOT TYPES (seed data — static definitions)
+// ============================================================
+
+model RobotType {
+  id          String  @id @default(cuid())
+  key         String  @unique // "MINER" | "FARMER" | "COLLECTOR" | "WORKER"
+  name        String
+  description String
+  imageId     String
+  category    String  @default("PRODUCTIVE") // "PRODUCTIVE" | "COMBAT"
+
+  // Base production (per completed job, level 1)
+  baseOutputAmount   Float
+  producedResourceId String
+  producedResource   Resource @relation("ProducedByType", fields: [producedResourceId], references: [id])
+
+  // Job duration in seconds (base, level 1)
+  baseDurationSecs Int
+
+  // Acquisition cost
+  acquisitionCosts RobotTypeAcquisitionCost[]
+
+  // Resources consumed per job
+  consumptions RobotTypeConsumption[]
+
+  // Access control
+  requiredAvatarLevel Int     @default(1)
+  isLocked            Boolean @default(false)
+  unlockRequirements  Json?   // For combat robots: { titanium: 5000, level: 20, ... }
+
+  robots Robot[]
+
+  @@map("robot_types")
+}
+
+model RobotTypeConsumption {
+  id          String    @id @default(cuid())
+  robotTypeId String
+  robotType   RobotType @relation(fields: [robotTypeId], references: [id])
+  resourceId  String
+  resource    Resource  @relation("ConsumedByType", fields: [resourceId], references: [id])
+  amountPerJob Float
+
+  @@map("robot_type_consumptions")
+}
+
+model RobotTypeAcquisitionCost {
+  id          String    @id @default(cuid())
+  robotTypeId String
+  robotType   RobotType @relation(fields: [robotTypeId], references: [id])
+  resourceId  String
+  resource    Resource  @relation("AcquisitionCost", fields: [resourceId], references: [id])
+  amount      Float
+
+  @@map("robot_type_acquisition_costs")
+}
+
+// ============================================================
+// ROBOTS (player-owned instances)
+// ============================================================
+
+model Robot {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  robotTypeId String
+  robotType   RobotType @relation(fields: [robotTypeId], references: [id])
+
+  name     String
+  status   RobotStatus @default(IDLE)
+
+  level      Int   @default(1)
+  experience Int   @default(0)
+
+  // Durability: 0-100, reduces each job
+  durability    Float @default(100)
+  // Lifetime wear: 0-100, permanent accumulated degradation
+  lifetimeWear  Float @default(0)
+
+  // Upgrade levels (0 = no upgrade applied)
+  upgradeProduction    Int @default(0)
+  upgradeEfficiency    Int @default(0)
+  upgradeEnergyCapacity Int @default(0)
+  upgradeDurability    Int @default(0)
+  upgradeSpeed         Int @default(0)
+
+  // Combat attributes (future PvP — stored now, used later)
+  combatAttack    Float @default(10)
+  combatDefense   Float @default(10)
+  combatSpeed     Float @default(10)
+  combatHealth    Float @default(100)
+  combatAccuracy  Float @default(75)
+
+  jobs Job[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("robots")
+}
+
+enum RobotStatus {
+  IDLE
+  WORKING
+  NEEDS_RESOURCES
+  NEEDS_REPAIR
+  RETIRED
+}
+
+// ============================================================
+// JOBS
+// ============================================================
+
+model Job {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  robotId String
+  robot   Robot  @relation(fields: [robotId], references: [id])
+
+  status      JobStatus @default(RUNNING)
+  startedAt   DateTime  @default(now())
+  durationSecs Int
+  completesAt DateTime
+
+  // Expected output (calculated at job start)
+  outputResourceId String
+  outputResource   Resource @relation("JobOutput", fields: [outputResourceId], references: [id])
+  expectedAmount   Float
+
+  // Resources consumed at job start (snapshot)
+  consumptions JobConsumption[]
+
+  // Result
+  actualAmount  Float?
+  completedAt   DateTime?
+  collected     Boolean  @default(false)
+  collectedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("jobs")
+}
+
+enum JobStatus {
+  RUNNING
+  COMPLETED
+  COLLECTED
+  FAILED
+  CANCELLED
+}
+
+model JobConsumption {
+  id         String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  resourceId String
+  resource   Resource @relation("ConsumedInJob", fields: [resourceId], references: [id])
+  amount     Float
+
+  @@map("job_consumptions")
+}
+
+// ============================================================
+// RESOURCES
+// ============================================================
+
+model Resource {
+  id          String @id @default(cuid())
+  key         String @unique // "IRON" | "COPPER" | "SILICON" | "ENERGY" | "TITANIUM" | "FOOD" | "MAINTENANCE"
+  name        String
+  symbol      String @unique
+  description String
+  category    String // "BASIC" | "ADVANCED" | "RARE" | "ENERGY" | "CONSUMABLE"
+  color       String // CSS hex color for UI
+  icon        String // emoji or icon identifier
+
+  basePrice    Float @default(0.001)
+  currentPrice Float @default(0.001)
+
+  // Relations
+  producedByTypes   RobotType[]   @relation("ProducedByType")
+  consumedByTypes   RobotTypeConsumption[] @relation("ConsumedByType")
+  acquisitionCosts  RobotTypeAcquisitionCost[] @relation("AcquisitionCost")
+  jobOutputs        Job[]         @relation("JobOutput")
+  jobConsumptions   JobConsumption[] @relation("ConsumedInJob")
+  inventoryItems    Inventory[]
+  marketOrders      MarketOrder[]
+  priceHistory      ResourcePriceHistory[]
+  expansionCosts    ExpansionCost[]
+  upgradeCosts      UpgradeCost[]
+  achievementRewards AchievementReward[]
+
+  @@map("resources")
+}
+
+model ResourcePriceHistory {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id])
+  price      Float
+  volume     Float    @default(0)
+  recordedAt DateTime @default(now())
+
+  @@map("resource_price_history")
+}
+
+// ============================================================
+// INVENTORY
+// ============================================================
+
+model Inventory {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id])
+  amount     Float    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, resourceId])
+  @@map("inventory")
+}
+
+// ============================================================
+// MARKET
+// ============================================================
+
+model MarketOrder {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  resourceId   String
+  resource     Resource    @relation(fields: [resourceId], references: [id])
+
+  type         OrderType
+  amount       Float
+  pricePerUnit Float
+  totalValue   Float
+
+  status    OrderStatus @default(OPEN)
+  filledAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("market_orders")
+}
+
+enum OrderType  { BUY SELL }
+enum OrderStatus { OPEN FILLED CANCELLED }
+
+// ============================================================
+// EXPANSIONS
+// ============================================================
+
+model ExpansionTier {
+  id            String @id @default(cuid())
+  tier          Int    @unique // 1, 2, 3, 4...
+  slotsGranted  Int    // total slots after this expansion (4, 6, 8, 10...)
+  costs         ExpansionCost[]
+
+  @@map("expansion_tiers")
+}
+
+model ExpansionCost {
+  id              String        @id @default(cuid())
+  expansionTierId String
+  expansionTier   ExpansionTier @relation(fields: [expansionTierId], references: [id])
+  resourceId      String
+  resource        Resource      @relation(fields: [resourceId], references: [id])
+  amount          Float
+
+  @@map("expansion_costs")
+}
+
+// ============================================================
+// UPGRADES
+// ============================================================
+
+// Upgrade costs are defined as static constants in code (upgrades.constants.ts)
+// But individual upgrade cost records live here for potential future dynamic pricing
+model UpgradeCost {
+  id         String   @id @default(cuid())
+  upgradeKey String   // e.g. "PRODUCTION_2" | "EFFICIENCY_3"
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id])
+  amount     Float
+
+  @@map("upgrade_costs")
+}
+
+// ============================================================
+// ACHIEVEMENTS
+// ============================================================
+
+model Achievement {
+  id          String @id @default(cuid())
+  key         String @unique
+  title       String
+  description String
+  icon        String
+  category    String @default("GENERAL") // "GENERAL" | "PRODUCTION" | "COMBAT" | "ECONOMY"
+  xpReward    Int    @default(0)
+
+  rewards  AchievementReward[]
+  unlocked UserAchievement[]
+
+  @@map("achievements")
+}
+
+model AchievementReward {
+  id            String      @id @default(cuid())
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  resourceId    String
+  resource      Resource    @relation(fields: [resourceId], references: [id])
+  amount        Float
+
+  @@map("achievement_rewards")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  claimed       Boolean     @default(false)
+  claimedAt     DateTime?
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
