@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
+import { getRobots, getInventory, updateRobot, saveRobots, saveInventory, RESOURCE_META, Robot } from '@/lib/game-store'
 import { UPGRADE_DEFINITIONS, UpgradeAttribute } from '@/modules/upgrades/upgrades.constants'
 import { formatNumber } from '@/lib/formatters'
 
@@ -19,57 +20,56 @@ const ATTR_TO_FIELD: Record<UpgradeAttribute, string> = {
   ENERGY_CAPACITY: 'upgradeEnergyCapacity',
 }
 
-export default function UpgradesPage() {
-  const [robots, setRobots] = useState<any[]>([])
-  const [inventory, setInventory] = useState<any[]>([])
-  const [allResources, setAllResources] = useState<any[]>([])
-  const [selectedRobot, setSelectedRobot] = useState<string | null>(null)
-  const [token, setToken] = useState('')
-  const [msgs, setMsgs] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState<Record<string, boolean>>({})
+function doUpgradeLocal(robotId: string, attribute: UpgradeAttribute): { ok: boolean; error?: string; msg?: string } {
+  const robots = getRobots()
+  const robot = robots.find((r: Robot) => r.id === robotId)
+  if (!robot) return { ok: false, error: 'Robot not found' }
 
-  const load = useCallback(async () => {
-    const t = localStorage.getItem('rf_token') ?? ''
-    setToken(t)
-    const headers = { Authorization: `Bearer ${t}` }
-    const [r, inv, res] = await Promise.all([
-      fetch('/api/robots', { headers }).then(r => r.json()),
-      fetch('/api/inventory', { headers }).then(r => r.json()),
-      fetch('/api/market', { headers }).then(r => r.json()),
-    ])
-    setRobots(r.data ?? [])
-    setInventory(inv.data ?? [])
-    setAllResources(res.data ?? [])
-    if (!selectedRobot && (r.data ?? []).length > 0) {
-      setSelectedRobot(r.data[0].id)
+  const field = ATTR_TO_FIELD[attribute] as keyof Robot
+  const currentLevel = robot[field] as number
+  const nextDef = UPGRADE_DEFINITIONS[attribute][currentLevel + 1]
+  if (!nextDef) return { ok: false, error: 'Already at max level' }
+
+  const inv = getInventory()
+  for (const c of nextDef.cost) {
+    if ((inv[c.resourceKey] ?? 0) < c.amount) {
+      return { ok: false, error: `Not enough ${RESOURCE_META[c.resourceKey]?.name ?? c.resourceKey}` }
     }
-  }, [selectedRobot])
+  }
+  for (const c of nextDef.cost) {
+    inv[c.resourceKey] = (inv[c.resourceKey] ?? 0) - c.amount
+  }
+  saveInventory(inv)
+  updateRobot(robotId, { [field]: currentLevel + 1 } as any)
+  return { ok: true, msg: `${attribute} upgraded to level ${currentLevel + 1}!` }
+}
 
-  useEffect(() => { load() }, [load])
+export default function UpgradesPage() {
+  const [robots, setRobots] = useState<Robot[]>([])
+  const [inventory, setInventory] = useState<Record<string, number>>({})
+  const [selectedRobot, setSelectedRobot] = useState<string | null>(null)
+  const [msgs, setMsgs] = useState<Record<string, string>>({})
+  const [busyKey, setBusyKey] = useState<string | null>(null)
 
-  const getInvAmount = (resourceKey: string) => {
-    const r = allResources.find((r: any) => r.key === resourceKey)
-    const item = inventory.find((i: any) => i.resourceId === r?.id)
-    return item?.amount ?? 0
+  function refresh() {
+    const r = getRobots()
+    setRobots(r)
+    setInventory(getInventory())
+    if (!selectedRobot && r.length > 0) setSelectedRobot(r[0].id)
   }
 
-  async function doUpgrade(robotId: string, attribute: UpgradeAttribute) {
+  useEffect(() => { refresh() }, [])
+
+  function handleUpgrade(robotId: string, attribute: UpgradeAttribute) {
     const key = `${robotId}:${attribute}`
-    setLoading(l => ({ ...l, [key]: true }))
-    setMsgs(m => ({ ...m, [key]: '' }))
-    try {
-      const res = await fetch(`/api/robots/${robotId}/upgrade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ attribute }),
-      })
-      const json = await res.json()
-      if (res.ok) { setMsgs(m => ({ ...m, [key]: '✓ ' + json.data.message })); load() }
-      else setMsgs(m => ({ ...m, [key]: '✗ ' + (json.error ?? 'Error') }))
-    } finally { setLoading(l => ({ ...l, [key]: false })) }
+    setBusyKey(key)
+    const result = doUpgradeLocal(robotId, attribute)
+    setMsgs(m => ({ ...m, [key]: result.ok ? `✓ ${result.msg}` : `✗ ${result.error}` }))
+    setBusyKey(null)
+    refresh()
   }
 
-  const robot = robots.find(r => r.id === selectedRobot)
+  const robot = robots.find((r: Robot) => r.id === selectedRobot)
 
   return (
     <div className="animate-fade-in">
@@ -80,7 +80,7 @@ export default function UpgradesPage() {
 
       {/* Robot selector */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 32, flexWrap: 'wrap' }}>
-        {robots.map(r => (
+        {robots.map((r: Robot) => (
           <button key={r.id}
             className={`btn ${selectedRobot === r.id ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setSelectedRobot(r.id)}
@@ -97,11 +97,11 @@ export default function UpgradesPage() {
           <div className="card card-accent" style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
               <div className="robot-avatar" style={{ width: 56, height: 56, fontSize: 28 }}>
-                {({ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' } as Record<string, string>)[robot.robotType?.key ?? ''] ?? '🤖'}
+                {({ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' } as Record<string, string>)[robot.robotTypeKey] ?? '🤖'}
               </div>
               <div>
                 <h2 style={{ fontSize: 18, marginBottom: 2 }}>{robot.name}</h2>
-                <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{robot.robotType?.name}</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{robot.robotTypeKey}</div>
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 24 }}>
                 <div style={{ textAlign: 'center' }}>
@@ -119,13 +119,12 @@ export default function UpgradesPage() {
           {/* Upgrade cards */}
           <div className="grid-2">
             {ATTRIBUTES.map(attr => {
-              const currentLevel = robot[ATTR_TO_FIELD[attr.key]] as number
+              const currentLevel = (robot as any)[ATTR_TO_FIELD[attr.key]] as number
               const currentDef = UPGRADE_DEFINITIONS[attr.key][currentLevel]
               const nextDef = UPGRADE_DEFINITIONS[attr.key][currentLevel + 1]
               const isMax = !nextDef
               const key = `${robot.id}:${attr.key}`
-
-              const canAfford = nextDef?.cost.every(c => getInvAmount(c.resourceKey) >= c.amount) ?? false
+              const canAfford = nextDef?.cost.every((c: any) => (inventory[c.resourceKey] ?? 0) >= c.amount) ?? false
 
               return (
                 <div key={attr.key} className={`card ${isMax ? '' : canAfford ? 'card-accent' : ''}`}
@@ -184,8 +183,8 @@ export default function UpgradesPage() {
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>UPGRADE COST</div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {nextDef.cost.map(c => {
-                          const have = getInvAmount(c.resourceKey)
+                        {nextDef.cost.map((c: any) => {
+                          const have = inventory[c.resourceKey] ?? 0
                           const ok = have >= c.amount
                           return (
                             <span key={c.resourceKey} className="resource-chip" style={{
@@ -193,7 +192,8 @@ export default function UpgradesPage() {
                               color: ok ? 'var(--color-success)' : 'var(--color-danger)',
                               fontSize: 12,
                             }}>
-                              {formatNumber(c.amount)} {c.resourceKey}
+                              {RESOURCE_META[c.resourceKey]?.icon} {formatNumber(c.amount)} {c.resourceKey}
+                              {!ok && <span style={{ fontSize: 10 }}> (have: {formatNumber(have)})</span>}
                             </span>
                           )
                         })}
@@ -208,10 +208,10 @@ export default function UpgradesPage() {
                   ) : (
                     <button
                       className={`btn btn-full ${canAfford ? 'btn-primary' : 'btn-secondary'}`}
-                      disabled={!canAfford || loading[key]}
-                      onClick={() => doUpgrade(robot.id, attr.key)}
+                      disabled={!canAfford || busyKey === key}
+                      onClick={() => handleUpgrade(robot.id, attr.key)}
                     >
-                      {loading[key] ? 'UPGRADING...' : canAfford ? `⬆ UPGRADE TO LEVEL ${currentLevel + 1}` : '⚠ INSUFFICIENT RESOURCES'}
+                      {busyKey === key ? 'UPGRADING...' : canAfford ? `⬆ UPGRADE TO LEVEL ${currentLevel + 1}` : '⚠ INSUFFICIENT RESOURCES'}
                     </button>
                   )}
 

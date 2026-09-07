@@ -1,55 +1,60 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { getAvatar, addInventory, Avatar } from '@/lib/game-store'
+
+const ACHIEVEMENTS = [
+  { key: 'FIRST_JOB', title: 'First Steps', desc: 'Complete your first job', icon: '⚙️', xp: 50, reward: { resourceKey: 'IRON', amount: 100 }, condition: (av: Avatar) => av.totalJobs >= 1 },
+  { key: 'JOB_10', title: 'Getting Started', desc: 'Complete 10 jobs', icon: '🔧', xp: 100, reward: { resourceKey: 'COPPER', amount: 50 }, condition: (av: Avatar) => av.totalJobs >= 10 },
+  { key: 'JOB_50', title: 'Hardworker', desc: 'Complete 50 jobs', icon: '💪', xp: 250, reward: { resourceKey: 'SILICON', amount: 30 }, condition: (av: Avatar) => av.totalJobs >= 50 },
+  { key: 'PRODUCE_100', title: 'Manufacturer', desc: 'Produce 100 total resources', icon: '🏭', xp: 150, reward: { resourceKey: 'ENERGY', amount: 200 }, condition: (av: Avatar) => av.totalProduced >= 100 },
+  { key: 'PRODUCE_1000', title: 'Industrial', desc: 'Produce 1,000 total resources', icon: '🏗️', xp: 500, reward: { resourceKey: 'IRON', amount: 500 }, condition: (av: Avatar) => av.totalProduced >= 1000 },
+]
 
 export default function RewardsPage() {
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [avatar, setAvatar] = useState<Avatar | null>(null)
+  const [claimed, setClaimed] = useState<string[]>([])
   const [msg, setMsg] = useState('')
 
-  useEffect(() => { load() }, [])
-
-  function load() {
-    const token = localStorage.getItem('rf_token')
-    fetch('/api/rewards', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setData(d.data); setLoading(false) })
-      .catch(() => setLoading(false))
-  }
-
-  async function claimReward(rewardId: string) {
-    const token = localStorage.getItem('rf_token')
-    setMsg('')
-    try {
-      const res = await fetch(`/api/rewards/${rewardId}/claim`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const json = await res.json()
-      if (res.ok) { setMsg('✓ ' + json.data.message); load() }
-      else { setMsg('✗ ' + (json.error ?? 'Error')) }
-    } catch {
-      setMsg('✗ Connection error')
+  function refresh() {
+    const av = getAvatar()
+    setAvatar(av)
+    const u = localStorage.getItem('rf_user')
+    if (u) {
+      const uid = JSON.parse(u).id
+      try { setClaimed(JSON.parse(localStorage.getItem(`rf_claimed_${uid}`) ?? '[]')) } catch {}
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading rewards...</div>
+  useEffect(() => { refresh() }, [])
 
-  const claimable = data.filter(r => r.status === 'AVAILABLE')
-  const locked = data.filter(r => r.status === 'LOCKED')
-  const claimed = data.filter(r => r.status === 'CLAIMED')
+  function handleClaim(key: string, reward: { resourceKey: string; amount: number }) {
+    addInventory(reward.resourceKey, reward.amount)
+    const u = localStorage.getItem('rf_user')
+    if (u) {
+      const uid = JSON.parse(u).id
+      const newClaimed = [...claimed, key]
+      localStorage.setItem(`rf_claimed_${uid}`, JSON.stringify(newClaimed))
+      setClaimed(newClaimed)
+    }
+    setMsg(`✓ Claimed! ${reward.amount} ${reward.resourceKey} added to inventory.`)
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  if (!avatar) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
+
+  const claimable = ACHIEVEMENTS.filter(a => !claimed.includes(a.key) && a.condition(avatar))
+  const locked = ACHIEVEMENTS.filter(a => !claimed.includes(a.key) && !a.condition(avatar))
+  const claimedList = ACHIEVEMENTS.filter(a => claimed.includes(a.key))
 
   return (
     <div className="animate-fade-in">
       <div className="page-header">
-        <h1 className="page-title">Achievements & Rewards</h1>
-        <p className="page-subtitle">Complete milestones to earn USDC and rare items</p>
+        <h1 className="page-title">Rewards</h1>
+        <p className="page-subtitle">Claim your achievement rewards</p>
       </div>
 
       {msg && (
-        <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 8, fontSize: 14,
-          background: msg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-          color: msg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)',
-          border: `1px solid ${msg.startsWith('✓') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+        <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', color: 'var(--color-success)', border: '1px solid rgba(34,197,94,0.2)' }}>
           {msg}
         </div>
       )}
@@ -57,22 +62,23 @@ export default function RewardsPage() {
       {/* Claimable */}
       {claimable.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <div className="section-title">Ready to Claim</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {claimable.map(r => (
-              <div key={r.id} className="card card-accent" style={{ borderColor: 'rgba(34,197,94,0.4)', display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ fontSize: 32 }}>🎁</div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ color: 'var(--color-success)', fontSize: 16 }}>{r.title}</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>{r.description}</p>
-                </div>
-                <div style={{ textAlign: 'right', paddingRight: 16 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>REWARD</div>
-                  <div style={{ fontWeight: 700, color: 'var(--color-success)' }}>
-                    +{r.rewardAmount} {r.rewardResource.name}
+          <div className="section-title">🎉 Ready to Claim ({claimable.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {claimable.map(a => (
+              <div key={a.key} className="card" style={{ borderColor: 'rgba(34,197,94,0.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ fontSize: 36 }}>{a.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{a.title}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{a.desc}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-success)', marginTop: 4 }}>
+                      🎁 {a.reward.amount} {a.reward.resourceKey} · +{a.xp} XP
+                    </div>
                   </div>
+                  <button className="btn btn-success" onClick={() => handleClaim(a.key, a.reward)}>
+                    CLAIM
+                  </button>
                 </div>
-                <button className="btn btn-success" onClick={() => claimReward(r.id)}>CLAIM REWARD</button>
               </div>
             ))}
           </div>
@@ -80,43 +86,43 @@ export default function RewardsPage() {
       )}
 
       {/* Locked */}
-      <div style={{ marginBottom: 32 }}>
-        <div className="section-title">In Progress</div>
-        <div className="grid-2">
-          {locked.map(r => (
-            <div key={r.id} className="card" style={{ opacity: 0.8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div>
-                  <h3 style={{ fontSize: 15 }}>{r.title}</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>{r.description}</p>
+      {locked.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <div className="section-title">🔒 Locked ({locked.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {locked.map(a => (
+              <div key={a.key} className="card" style={{ opacity: 0.6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ fontSize: 36, filter: 'grayscale(1)' }}>{a.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-muted)' }}>{a.title}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{a.desc}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                      🎁 {a.reward.amount} {a.reward.resourceKey} · +{a.xp} XP
+                    </div>
+                  </div>
+                  <span className="badge badge-locked">🔒 LOCKED</span>
                 </div>
-                <span style={{ fontSize: 24, opacity: 0.5 }}>🔒</span>
               </div>
-              <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>REWARD</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-bright)', fontSize: 13 }}>
-                  {r.rewardAmount} {r.rewardResource.name}
-                </span>
-              </div>
-            </div>
-          ))}
-          {locked.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No locked achievements.</p>}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Claimed */}
-      {claimed.length > 0 && (
+      {claimedList.length > 0 && (
         <div>
-          <div className="section-title">Completed</div>
-          <div className="grid-2">
-            {claimed.map(r => (
-              <div key={r.id} className="card" style={{ opacity: 0.5, borderColor: 'var(--border-dim)' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <span style={{ fontSize: 24 }}>✅</span>
-                  <div>
-                    <h3 style={{ fontSize: 14, color: 'var(--text-muted)', textDecoration: 'line-through' }}>{r.title}</h3>
-                    <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Reward claimed</p>
+          <div className="section-title">✅ Claimed ({claimedList.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {claimedList.map(a => (
+              <div key={a.key} className="card" style={{ opacity: 0.5 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ fontSize: 36 }}>{a.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{a.title}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{a.desc}</div>
                   </div>
+                  <span className="badge badge-working">✓ CLAIMED</span>
                 </div>
               </div>
             ))}

@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
+import { getRobots, getInventory, getJobs, syncJobs, startJob, collectJob as doCollect, ROBOT_TYPES, RESOURCE_META, Robot, ActiveJob } from '@/lib/game-store'
 import { formatDuration, progressPercent, timeUntil } from '@/lib/formatters'
 
-function CountdownBar({ job }: { job: any }) {
+function CountdownBar({ job }: { job: ActiveJob }) {
   const [tick, setTick] = useState(0)
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000)
@@ -11,7 +12,7 @@ function CountdownBar({ job }: { job: any }) {
 
   const pct = progressPercent(job.startedAt, job.completesAt)
   const remaining = timeUntil(job.completesAt)
-  const done = remaining === 0
+  const done = remaining === 0 || new Date(job.completesAt).getTime() <= Date.now()
 
   return (
     <div>
@@ -29,68 +30,60 @@ function CountdownBar({ job }: { job: any }) {
 }
 
 export default function WorkPage() {
-  const [robots, setRobots] = useState<any[]>([])
-  const [inventory, setInventory] = useState<any[]>([])
-  const [token, setToken] = useState('')
+  const [robots, setRobots] = useState<Robot[]>([])
+  const [inventory, setInventory] = useState<Record<string, number>>({})
+  const [jobs, setJobs] = useState<ActiveJob[]>([])
   const [loading, setLoading] = useState(true)
   const [msgs, setMsgs] = useState<Record<string, string>>({})
   const [working, setWorking] = useState<Record<string, boolean>>({})
 
-  const load = useCallback(async () => {
-    const t = localStorage.getItem('rf_token') ?? ''
-    setToken(t)
-    const headers = { Authorization: `Bearer ${t}` }
-    const [r, inv] = await Promise.all([
-      fetch('/api/robots', { headers }).then(r => r.json()),
-      fetch('/api/inventory', { headers }).then(r => r.json()),
-    ])
-    setRobots(r.data ?? [])
-    setInventory(inv.data ?? [])
+  function refresh() {
+    syncJobs()
+    setRobots(getRobots())
+    setInventory(getInventory())
+    setJobs(getJobs())
     setLoading(false)
-  }, [])
+  }
 
-  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t) }, [load])
+  useEffect(() => {
+    refresh()
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
+  }, [])
 
   function setMsg(robotId: string, msg: string) {
     setMsgs(m => ({ ...m, [robotId]: msg }))
   }
 
-  async function assignJob(robotId: string) {
-    setWorking(w => ({ ...w, [robotId]: true })); setMsg(robotId, '')
-    try {
-      const res = await fetch(`/api/robots/${robotId}/assign-job`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      })
-      const json = await res.json()
-      if (res.ok) { setMsg(robotId, '✓ ' + json.data.message); load() }
-      else setMsg(robotId, '✗ ' + (json.error ?? 'Error'))
-    } finally { setWorking(w => ({ ...w, [robotId]: false })) }
+  function handleAssign(robotId: string) {
+    setWorking(w => ({ ...w, [robotId]: true }))
+    setMsg(robotId, '')
+    const result = startJob(robotId)
+    if (result.ok) { setMsg(robotId, '✓ Job started!'); refresh() }
+    else setMsg(robotId, `✗ ${result.error}`)
+    setWorking(w => ({ ...w, [robotId]: false }))
   }
 
-  async function collectJob(robotId: string) {
-    setWorking(w => ({ ...w, [robotId]: true })); setMsg(robotId, '')
-    try {
-      const res = await fetch(`/api/robots/${robotId}/collect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      })
-      const json = await res.json()
-      if (res.ok) {
-        const d = json.data
-        setMsg(robotId, `✓ ${d.message}${d.robotUpdate?.needsRepair ? ' ⚠ Robot needs repair!' : ''}`)
-        load()
-      } else setMsg(robotId, '✗ ' + (json.error ?? 'Error'))
-    } finally { setWorking(w => ({ ...w, [robotId]: false })) }
+  function handleCollect(robotId: string) {
+    setWorking(w => ({ ...w, [robotId]: true }))
+    setMsg(robotId, '')
+    const result = doCollect(robotId)
+    if (result.ok) {
+      setMsg(robotId, `✓ Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name}!`)
+      refresh()
+    } else {
+      setMsg(robotId, `✗ ${result.error}`)
+    }
+    setWorking(w => ({ ...w, [robotId]: false }))
   }
-
-  const getInv = (resourceId: string) => inventory.find((i: any) => i.resourceId === resourceId)?.amount ?? 0
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading...</div>
 
-  const idleRobots = robots.filter(r => r.status === 'IDLE')
-  const workingRobots = robots.filter(r => r.status === 'WORKING')
-  const repairRobots = robots.filter(r => r.status === 'NEEDS_REPAIR')
+  const idleRobots = robots.filter((r: Robot) => r.status === 'IDLE')
+  const workingRobots = robots.filter((r: Robot) => r.status === 'WORKING')
+  const repairRobots = robots.filter((r: Robot) => r.status === 'NEEDS_REPAIR')
+
+  const getJobForRobot = (robotId: string) => jobs.find((j: ActiveJob) => j.robotId === robotId && j.status !== 'COLLECTED') ?? null
 
   return (
     <div className="animate-fade-in">
@@ -123,11 +116,11 @@ export default function WorkPage() {
         <div style={{ marginBottom: 40 }}>
           <div className="section-title">Active Jobs</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {workingRobots.map(robot => {
-              const job = robot.jobs?.[0]
+            {workingRobots.map((robot: Robot) => {
+              const job = getJobForRobot(robot.id)
               if (!job) return null
-              const remaining = timeUntil(job.completesAt)
-              const done = remaining === 0
+              const done = new Date(job.completesAt).getTime() <= Date.now()
+              const type = ROBOT_TYPES.find(t => t.key === robot.robotTypeKey)
 
               return (
                 <div key={robot.id} className="card" style={{ borderColor: done ? 'rgba(34,197,94,0.4)' : 'rgba(0,212,255,0.2)' }}>
@@ -135,14 +128,14 @@ export default function WorkPage() {
                     <div>
                       <h3 style={{ fontSize: 16 }}>{robot.name}</h3>
                       <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                        {robot.robotType?.name} · Producing <strong style={{ color: 'var(--accent-primary)' }}>{job.expectedAmount?.toFixed(1)} {job.outputResource?.name}</strong>
+                        {type?.name} · Producing <strong style={{ color: 'var(--accent-primary)' }}>{job.expectedAmount.toFixed(1)} {RESOURCE_META[job.resourceKey]?.name}</strong>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                        Consumes: {robot.robotType?.consumptions?.map((c: any) => `${c.amountPerJob} ${c.resource.name}`).join(', ')}
+                        Consumes: {type?.consumptions.map((c: any) => `${c.amountPerJob} ${RESOURCE_META[c.resourceKey]?.name}`).join(', ')}
                       </div>
                     </div>
                     {done ? (
-                      <button className="btn btn-success" disabled={working[robot.id]} onClick={() => collectJob(robot.id)}>
+                      <button className="btn btn-success" disabled={working[robot.id]} onClick={() => handleCollect(robot.id)}>
                         📦 COLLECT
                       </button>
                     ) : (
@@ -169,19 +162,17 @@ export default function WorkPage() {
         </div>
       )}
 
-      {/* Idle robots — assign work */}
+      {/* Idle robots */}
       {idleRobots.length > 0 && (
         <div style={{ marginBottom: 40 }}>
           <div className="section-title">Idle Robots — Assign Work</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {idleRobots.map(robot => {
-              const type = robot.robotType
+            {idleRobots.map((robot: Robot) => {
+              const type = ROBOT_TYPES.find(t => t.key === robot.robotTypeKey)
               return (
                 <div key={robot.id} className="card" style={{ borderColor: 'rgba(0,212,255,0.1)' }}>
                   <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-                    <div className="robot-avatar" style={{ fontSize: 28 }}>
-                      {({ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' } as Record<string, string>)[type?.key ?? ''] ?? '🤖'}
-                    </div>
+                    <div className="robot-avatar" style={{ fontSize: 28 }}>{type?.icon ?? '🤖'}</div>
                     <div style={{ flex: 1 }}>
                       <h3>{robot.name}</h3>
                       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>{type?.name}</div>
@@ -196,19 +187,19 @@ export default function WorkPage() {
                     <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '10px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PRODUCES</div>
                       <div style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>
-                        +{type?.baseOutputAmount} {type?.producedResource?.name}
+                        +{type?.baseOutputAmount} {RESOURCE_META[type?.producedResourceKey ?? '']?.name}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>in {formatDuration(type?.baseDurationSecs)}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>in {formatDuration(type?.baseDurationSecs ?? 60)}</div>
                     </div>
                     {/* Consumes */}
                     <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '10px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CONSUMES</div>
-                      {type?.consumptions?.map((c: any) => {
-                        const have = getInv(c.resourceId)
+                      {type?.consumptions.map((c: any) => {
+                        const have = inventory[c.resourceKey] ?? 0
                         const ok = have >= c.amountPerJob
                         return (
-                          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: ok ? 'var(--text-secondary)' : 'var(--color-danger)' }}>
-                            <span>{c.resource.icon} {c.amountPerJob} {c.resource.name}</span>
+                          <div key={c.resourceKey} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: ok ? 'var(--text-secondary)' : 'var(--color-danger)' }}>
+                            <span>{RESOURCE_META[c.resourceKey]?.icon} {c.amountPerJob} {RESOURCE_META[c.resourceKey]?.name}</span>
                             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(have: {have.toFixed(0)})</span>
                           </div>
                         )
@@ -219,7 +210,7 @@ export default function WorkPage() {
                   <button
                     className="btn btn-primary btn-full"
                     disabled={working[robot.id] || robot.durability < 10}
-                    onClick={() => assignJob(robot.id)}
+                    onClick={() => handleAssign(robot.id)}
                   >
                     {working[robot.id] ? 'STARTING...' : robot.durability < 10 ? '🔧 NEEDS REPAIR FIRST' : '⚙️ START JOB'}
                   </button>

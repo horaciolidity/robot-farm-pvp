@@ -2,6 +2,8 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { getAvatar, getRobots, syncJobs, Avatar, Robot } from '@/lib/game-store'
+import { localLogout } from '@/lib/local-auth'
 
 const NAV_ITEMS = [
   { href: '/dashboard',  icon: '🏠', label: 'Dashboard',   section: 'main' },
@@ -20,30 +22,31 @@ const NAV_ITEMS = [
 export default function GameLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [avatar, setAvatar] = useState<any>(null)
-  const [robots, setRobots] = useState<any[]>([])
+  const [avatar, setAvatar] = useState<Avatar | null>(null)
+  const [robots, setRobots] = useState<Robot[]>([])
 
   useEffect(() => {
     const token = localStorage.getItem('rf_token')
     if (!token) { router.push('/login'); return }
 
-    async function load() {
-      try {
-        const [avatarRes, robotsRes] = await Promise.all([
-          fetch('/api/avatar', { headers: { Authorization: `Bearer ${token}` } }),
-          fetch('/api/robots', { headers: { Authorization: `Bearer ${token}` } }),
-        ])
-        if (avatarRes.ok) { const d = await avatarRes.json(); setAvatar(d.data) }
-        if (robotsRes.ok) { const d = await robotsRes.json(); setRobots(d.data) }
-      } catch {}
-    }
-    load()
-    // Refresh every 30 seconds
-    const interval = setInterval(load, 30000)
+    const av = getAvatar()
+    if (!av) { router.push('/avatar'); return }
+
+    syncJobs()
+    setAvatar(av)
+    setRobots(getRobots())
+
+    // Refresh every 10 seconds
+    const interval = setInterval(() => {
+      syncJobs()
+      setAvatar(getAvatar())
+      setRobots(getRobots())
+    }, 10000)
     return () => clearInterval(interval)
   }, [router])
 
   function handleLogout() {
+    localLogout()
     localStorage.removeItem('rf_token')
     localStorage.removeItem('rf_user')
     router.push('/login')
@@ -56,7 +59,7 @@ export default function GameLayout({ children }: { children: React.ReactNode }) 
     { key: 'future', label: 'Future' },
   ]
 
-  const activeRobots = robots.filter(r => r.status === 'WORKING').length
+  const activeRobots = robots.filter((r: Robot) => r.status === 'WORKING').length
 
   return (
     <div className="game-layout">
@@ -79,7 +82,7 @@ export default function GameLayout({ children }: { children: React.ReactNode }) 
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 6 }}>
                   <span style={{ color: 'var(--accent-primary)' }}>LVL {avatar.level}</span>
                   <span>·</span>
-                  <span>🤖 {robots.filter(r => r.status !== 'RETIRED').length}/{avatar.robotSlots}</span>
+                  <span>🤖 {robots.filter((r: Robot) => r.status !== 'RETIRED').length}/{avatar.robotSlots}</span>
                 </div>
               </div>
             </div>
@@ -95,11 +98,11 @@ export default function GameLayout({ children }: { children: React.ReactNode }) 
         {/* Navigation */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {sections.map(section => {
-            const items = NAV_ITEMS.filter(n => n.section === section.key)
+            const items = NAV_ITEMS.filter((n: any) => n.section === section.key)
             return (
               <div key={section.key} className="nav-section">
                 <div className="nav-section-label">{section.label}</div>
-                {items.map(item => (
+                {items.map((item: any) => (
                   <Link
                     key={item.href}
                     href={item.locked ? '#' : item.href}

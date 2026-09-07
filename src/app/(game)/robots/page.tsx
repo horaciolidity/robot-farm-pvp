@@ -1,7 +1,7 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
+import { getRobots, getAvatar, getInventory, getJobs, syncJobs, acquireRobot, repairRobot, collectJob, ROBOT_TYPES, RESOURCE_META, Robot, ActiveJob } from '@/lib/game-store'
 import { formatNumber, formatDuration, progressPercent, timeUntil } from '@/lib/formatters'
-import { UPGRADE_DEFINITIONS, UpgradeAttribute } from '@/modules/upgrades/upgrades.constants'
 import Link from 'next/link'
 
 const STATUS_EMOJI: Record<string, string> = {
@@ -10,48 +10,48 @@ const STATUS_EMOJI: Record<string, string> = {
 
 function CountdownTimer({ completesAt }: { completesAt: string }) {
   const [remaining, setRemaining] = useState(timeUntil(completesAt))
-
   useEffect(() => {
     const t = setInterval(() => setRemaining(timeUntil(completesAt)), 1000)
     return () => clearInterval(t)
   }, [completesAt])
-
   return <span>{remaining > 0 ? formatDuration(remaining) : 'READY TO COLLECT'}</span>
 }
 
-function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => void; token: string }) {
+function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | null; onAction: () => void }) {
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
-  const job = robot.jobs?.[0]
-  const hasActiveJob = job && job.status === 'RUNNING'
-  const jobDone = job && job.status !== 'COLLECTED' && timeUntil(job.completesAt) === 0
 
+  const hasActiveJob = job && job.status === 'RUNNING'
+  const jobDone = job && job.status !== 'COLLECTED' && new Date(job.completesAt).getTime() <= Date.now()
+  const pct = hasActiveJob ? progressPercent(job!.startedAt, job!.completesAt) : 0
   const durabColor = robot.durability > 50 ? 'var(--color-success)' : robot.durability > 30 ? 'var(--color-warning)' : 'var(--color-danger)'
 
-  async function doAction(action: string, body?: any) {
+  function doRepair() {
     setLoading(true); setMsg('')
-    try {
-      const res = await fetch(`/api/robots/${robot.id}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: body ? JSON.stringify(body) : undefined,
-      })
-      const json = await res.json()
-      if (res.ok) { setMsg('✓ ' + (json.data?.message ?? 'Done')); onAction() }
-      else setMsg('✗ ' + (json.error ?? 'Error'))
-    } finally { setLoading(false) }
+    const result = repairRobot(robot.id)
+    setMsg(result.ok ? '✓ Robot repaired!' : `✗ ${result.error}`)
+    setLoading(false)
+    onAction()
   }
 
-  const pct = hasActiveJob ? progressPercent(job.startedAt, job.completesAt) : 0
+  function doCollect() {
+    setLoading(true); setMsg('')
+    const result = collectJob(robot.id)
+    if (result.ok) {
+      setMsg(`✓ Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name ?? result.resourceKey}`)
+    } else {
+      setMsg(`✗ ${result.error}`)
+    }
+    setLoading(false)
+    onAction()
+  }
 
   return (
-    <div className={`card ${robot.status === 'NEEDS_REPAIR' ? 'card-danger' : hasActiveJob ? '' : ''}`}
+    <div className={`card`}
       style={{ borderColor: hasActiveJob ? 'rgba(34,197,94,0.3)' : robot.status === 'NEEDS_REPAIR' ? 'rgba(239,68,68,0.3)' : undefined }}>
       {/* Header */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 16, alignItems: 'flex-start' }}>
-        <div className="robot-avatar">
-          {STATUS_EMOJI[robot.robotType?.key ?? ''] ?? '🤖'}
-        </div>
+        <div className="robot-avatar">{STATUS_EMOJI[robot.robotTypeKey] ?? '🤖'}</div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ fontSize: 16, marginBottom: 2 }}>{robot.name}</h3>
@@ -60,25 +60,9 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
               {robot.status}
             </span>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{robot.robotType?.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            LVL {robot.level} · XP {robot.experience}
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{ROBOT_TYPES.find(t => t.key === robot.robotTypeKey)?.name}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>LVL {robot.level} · XP {robot.experience}</div>
         </div>
-      </div>
-
-      {/* Stats grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
-        {[
-          { label: 'PRODUCTION', value: `${UPGRADE_DEFINITIONS.PRODUCTION[robot.upgradeProduction]?.value?.toFixed(1)}x`, color: 'var(--accent-primary)' },
-          { label: 'EFFICIENCY', value: `${((UPGRADE_DEFINITIONS.EFFICIENCY[robot.upgradeEfficiency]?.value ?? 0) * 100).toFixed(0)}%`, color: 'var(--color-success)' },
-          { label: 'SPEED', value: `${((UPGRADE_DEFINITIONS.SPEED[robot.upgradeSpeed]?.value ?? 0) * 100).toFixed(0)}%`, color: 'var(--res-silicon)' },
-        ].map(s => (
-          <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-            <div style={{ fontSize: 15, fontFamily: 'var(--font-display)', color: s.color, fontWeight: 700 }}>{s.value}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{s.label}</div>
-          </div>
-        ))}
       </div>
 
       {/* Durability */}
@@ -91,11 +75,6 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
           <div className={`progress-fill ${robot.durability < 30 ? 'danger' : robot.durability < 60 ? 'warning' : ''}`}
             style={{ width: `${robot.durability}%` }} />
         </div>
-        {robot.durability < 30 && (
-          <div style={{ fontSize: 11, color: 'var(--color-warning)', marginTop: 4 }}>
-            ⚠ Robot requires maintenance
-          </div>
-        )}
       </div>
 
       {/* Active job */}
@@ -104,14 +83,14 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
             <span style={{ color: 'var(--text-muted)' }}>JOB PROGRESS</span>
             <span style={{ color: 'var(--color-success)' }}>
-              <CountdownTimer completesAt={job.completesAt} />
+              <CountdownTimer completesAt={job!.completesAt} />
             </span>
           </div>
           <div className="progress-bar tall">
             <div className="progress-fill animate" style={{ width: `${pct}%` }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            <span>⛏ +{job.expectedAmount?.toFixed(1)} {job.outputResource?.name}</span>
+            <span>⛏ +{job!.expectedAmount} {RESOURCE_META[job!.resourceKey]?.name}</span>
             <span>{pct.toFixed(0)}%</span>
           </div>
         </div>
@@ -120,21 +99,16 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {(jobDone || (job && job.status === 'COMPLETED')) && (
-          <button className="btn btn-success btn-sm" disabled={loading} onClick={() => doAction('collect')}>
+          <button className="btn btn-success btn-sm" disabled={loading} onClick={doCollect}>
             📦 COLLECT
           </button>
         )}
         {robot.status === 'IDLE' && (
           <Link href="/work" className="btn btn-primary btn-sm">⚙️ ASSIGN WORK</Link>
         )}
-        {robot.status === 'NEEDS_REPAIR' && (
-          <button className="btn btn-danger btn-sm" disabled={loading} onClick={() => doAction('repair')}>
+        {(robot.status === 'NEEDS_REPAIR' || robot.durability < 30) && (
+          <button className="btn btn-danger btn-sm" disabled={loading} onClick={doRepair}>
             🔧 REPAIR
-          </button>
-        )}
-        {robot.durability < 30 && robot.status === 'IDLE' && (
-          <button className="btn btn-secondary btn-sm" disabled={loading} onClick={() => doAction('repair')}>
-            🔧 REPAIR ({100 - Math.ceil(robot.durability)} pts)
           </button>
         )}
         <Link href="/upgrades" className="btn btn-ghost btn-sm">⬆ UPGRADES</Link>
@@ -152,56 +126,39 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
 }
 
 export default function RobotsPage() {
-  const [robots, setRobots] = useState<any[]>([])
-  const [robotTypes, setRobotTypes] = useState<any[]>([])
+  const [robots, setRobots] = useState<Robot[]>([])
   const [avatar, setAvatar] = useState<any>(null)
-  const [inventory, setInventory] = useState<any[]>([])
+  const [inventory, setInventory] = useState<Record<string, number>>({})
+  const [jobs, setJobs] = useState<ActiveJob[]>([])
   const [loading, setLoading] = useState(true)
   const [acquiring, setAcquiring] = useState(false)
   const [acquireMsg, setAcquireMsg] = useState('')
-  const [token, setToken] = useState('')
 
-  const load = useCallback(async () => {
-    const t = localStorage.getItem('rf_token') ?? ''
-    setToken(t)
-    const headers = { Authorization: `Bearer ${t}` }
-
-    const [r, types, av, inv] = await Promise.all([
-      fetch('/api/robots', { headers }).then(r => r.json()),
-      fetch('/api/robots/types', { headers }).then(r => r.json()),
-      fetch('/api/avatar', { headers }).then(r => r.json()),
-      fetch('/api/inventory', { headers }).then(r => r.json()),
-    ])
-
-    setRobots(r.data ?? [])
-    setRobotTypes(types.data ?? [])
-    setAvatar(av.data)
-    setInventory(inv.data ?? [])
+  function refresh() {
+    syncJobs()
+    setRobots(getRobots())
+    setAvatar(getAvatar())
+    setInventory(getInventory())
+    setJobs(getJobs())
     setLoading(false)
+  }
+
+  useEffect(() => {
+    refresh()
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  async function acquireRobot(typeKey: string) {
+  function handleAcquire(typeKey: string) {
     setAcquiring(true); setAcquireMsg('')
-    try {
-      const res = await fetch('/api/robots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ robotTypeKey: typeKey }),
-      })
-      const json = await res.json()
-      if (res.ok) { setAcquireMsg('✓ ' + json.data.message); load() }
-      else setAcquireMsg('✗ ' + (json.error ?? 'Error'))
-    } finally { setAcquiring(false) }
+    const result = acquireRobot(typeKey)
+    setAcquireMsg(result.ok ? '✓ Robot acquired!' : `✗ ${result.error}`)
+    setAcquiring(false)
+    refresh()
   }
 
-  const ownedCount = robots.filter(r => r.status !== 'RETIRED').length
+  const ownedCount = robots.filter((r: Robot) => r.status !== 'RETIRED').length
   const capacity = avatar?.robotSlots ?? 2
-
-  const getInventoryAmount = (resourceId: string) => {
-    return inventory.find((i: any) => i.resourceId === resourceId)?.amount ?? 0
-  }
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading robots...</div>
 
@@ -229,9 +186,10 @@ export default function RobotsPage() {
         <div>
           <div className="section-title">Your Fleet</div>
           <div className="grid-2" style={{ marginBottom: 40 }}>
-            {robots.map(r => (
-              <RobotCard key={r.id} robot={r} token={token} onAction={load} />
-            ))}
+            {robots.map((r: Robot) => {
+              const job = jobs.find((j: ActiveJob) => j.robotId === r.id && j.status !== 'COLLECTED') ?? null
+              return <RobotCard key={r.id} robot={r} job={job} onAction={refresh} />
+            })}
           </div>
         </div>
       ) : (
@@ -255,16 +213,13 @@ export default function RobotsPage() {
             </div>
           )}
           <div className="grid-2">
-            {robotTypes.filter(t => !t.isLocked).map(type => {
-              const canAfford = type.acquisitionCosts.every((c: any) =>
-                getInventoryAmount(c.resourceId) >= c.amount
-              )
+            {ROBOT_TYPES.filter(t => !t.isLocked).map(type => {
+              const canAfford = type.acquisitionCosts.every((c: any) => (inventory[c.resourceKey] ?? 0) >= c.amount)
               const isFree = type.acquisitionCosts.length === 0
-
               return (
-                <div key={type.id} className={`card ${canAfford || isFree ? '' : ''}`} style={{ opacity: canAfford || isFree ? 1 : 0.7 }}>
+                <div key={type.key} className="card" style={{ opacity: canAfford || isFree ? 1 : 0.7 }}>
                   <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-                    <div className="robot-avatar" style={{ fontSize: 28 }}>{STATUS_EMOJI[type.key] ?? '🤖'}</div>
+                    <div className="robot-avatar" style={{ fontSize: 28 }}>{type.icon}</div>
                     <div>
                       <h3>{type.name}</h3>
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>{type.description}</p>
@@ -275,7 +230,7 @@ export default function RobotsPage() {
                     <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>PRODUCES</div>
                       <div style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>
-                        +{type.baseOutputAmount} {type.producedResource?.name}/job
+                        +{type.baseOutputAmount} {RESOURCE_META[type.producedResourceKey]?.name}/job
                       </div>
                     </div>
                     <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 12px' }}>
@@ -287,16 +242,18 @@ export default function RobotsPage() {
                   </div>
 
                   {/* Consumes */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CONSUMES PER JOB</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {type.consumptions.map((c: any) => (
-                        <span key={c.id} className="resource-chip" style={{ fontSize: 12 }}>
-                          {c.resource.icon} {c.amountPerJob} {c.resource.name}
-                        </span>
-                      ))}
+                  {type.consumptions.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CONSUMES PER JOB</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {type.consumptions.map((c: any) => (
+                          <span key={c.resourceKey} className="resource-chip" style={{ fontSize: 12 }}>
+                            {RESOURCE_META[c.resourceKey]?.icon} {c.amountPerJob} {RESOURCE_META[c.resourceKey]?.name}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Cost */}
                   {isFree ? (
@@ -308,11 +265,11 @@ export default function RobotsPage() {
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>ACQUISITION COST</div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {type.acquisitionCosts.map((c: any) => {
-                          const have = getInventoryAmount(c.resourceId)
+                          const have = inventory[c.resourceKey] ?? 0
                           const ok = have >= c.amount
                           return (
-                            <span key={c.id} className="resource-chip" style={{ fontSize: 12, borderColor: ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)', color: ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                              {c.resource.icon} {formatNumber(c.amount)} {c.resource.name}
+                            <span key={c.resourceKey} className="resource-chip" style={{ fontSize: 12, borderColor: ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)', color: ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                              {RESOURCE_META[c.resourceKey]?.icon} {formatNumber(c.amount)} {RESOURCE_META[c.resourceKey]?.name}
                               {!ok && <span style={{ fontSize: 10 }}> ({formatNumber(have)} have)</span>}
                             </span>
                           )
@@ -324,7 +281,7 @@ export default function RobotsPage() {
                   <button
                     className={`btn btn-full ${canAfford || isFree ? 'btn-primary' : 'btn-secondary'}`}
                     disabled={(!canAfford && !isFree) || acquiring}
-                    onClick={() => acquireRobot(type.key)}
+                    onClick={() => handleAcquire(type.key)}
                   >
                     {isFree ? '🎁 CLAIM FREE ROBOT' : canAfford ? '🤖 ACQUIRE ROBOT' : '⚠ INSUFFICIENT RESOURCES'}
                   </button>
@@ -338,8 +295,8 @@ export default function RobotsPage() {
       {/* Locked robots */}
       <div style={{ marginTop: 32 }}>
         <div className="section-title">Locked</div>
-        {robotTypes.filter(t => t.isLocked).map(type => (
-          <div key={type.id} className="card" style={{ opacity: 0.5, borderColor: 'rgba(100,116,139,0.2)' }}>
+        {ROBOT_TYPES.filter(t => t.isLocked).map(type => (
+          <div key={type.key} className="card" style={{ opacity: 0.5, borderColor: 'rgba(100,116,139,0.2)' }}>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
               <div className="robot-avatar" style={{ filter: 'grayscale(1)', fontSize: 28 }}>⚔️</div>
               <div style={{ flex: 1 }}>

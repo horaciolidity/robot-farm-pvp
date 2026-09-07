@@ -1,46 +1,26 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { getAvatar, getRobots, getInventory, getJobs, syncJobs, RESOURCE_META, Avatar, Robot, ActiveJob } from '@/lib/game-store'
 import { formatNumber, formatDuration, progressPercent, timeUntil } from '@/lib/formatters'
 
-function useApi(url: string) {
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(async () => {
-    const token = localStorage.getItem('rf_token')
-    if (!token) return
-    try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      if (res.ok) { const j = await res.json(); setData(j.data) }
-    } finally { setLoading(false) }
-  }, [url])
-
-  useEffect(() => { refresh() }, [refresh])
-  return { data, loading, refresh }
-}
-
-function ActiveJobCard({ robot }: { robot: any }) {
-  const job = robot.jobs?.[0]
+function ActiveJobCard({ robot, job }: { robot: Robot; job: ActiveJob }) {
   const [now, setNow] = useState(Date.now())
-
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  if (!job || job.status === 'COLLECTED') return null
   const pct = progressPercent(job.startedAt, job.completesAt)
   const remaining = timeUntil(job.completesAt)
-  const done = remaining === 0
+  const done = remaining === 0 || new Date(job.completesAt).getTime() <= now
 
   return (
     <div className="card" style={{ borderColor: done ? 'rgba(34,197,94,0.4)' : 'var(--border-dim)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-bright)' }}>{robot.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{robot.robotType?.name}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{robot.robotTypeKey}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           {done ? (
@@ -57,7 +37,7 @@ function ActiveJobCard({ robot }: { robot: any }) {
         <div className={`progress-fill ${done ? 'success' : ''}`} style={{ width: `${pct}%` }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-        <span>⛏ Producing {job.outputResource?.name}</span>
+        <span>⛏ Producing {RESOURCE_META[job.resourceKey]?.name ?? job.resourceKey}</span>
         <span>{pct.toFixed(0)}%</span>
       </div>
     </div>
@@ -65,25 +45,31 @@ function ActiveJobCard({ robot }: { robot: any }) {
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const { data: avatar } = useApi('/api/avatar')
-  const { data: robots } = useApi('/api/robots')
-  const { data: inventory } = useApi('/api/inventory')
-  const { data: market } = useApi('/api/market')
+  const [avatar, setAvatar] = useState<Avatar | null>(null)
+  const [robots, setRobots] = useState<Robot[]>([])
+  const [inventory, setInventory] = useState<Record<string, number>>({})
+  const [jobs, setJobs] = useState<ActiveJob[]>([])
+
+  function refresh() {
+    syncJobs()
+    setAvatar(getAvatar())
+    setRobots(getRobots())
+    setInventory(getInventory())
+    setJobs(getJobs())
+  }
+
+  useEffect(() => {
+    refresh()
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
+  }, [])
 
   const KEY_RESOURCES = ['IRON', 'COPPER', 'SILICON', 'ENERGY', 'TITANIUM']
-  const activeRobots = (robots ?? []).filter((r: any) => r.status === 'WORKING')
-  const idleRobots = (robots ?? []).filter((r: any) => r.status === 'IDLE')
-  const repairRobots = (robots ?? []).filter((r: any) => r.status === 'NEEDS_REPAIR')
+  const activeRobots = robots.filter((r: Robot) => r.status === 'WORKING')
+  const idleRobots = robots.filter((r: Robot) => r.status === 'IDLE')
+  const repairRobots = robots.filter((r: Robot) => r.status === 'NEEDS_REPAIR')
 
-  const getInv = (key: string) => {
-    const item = (inventory ?? []).find((i: any) => i.resource.key === key)
-    return item?.amount ?? 0
-  }
-  const getPrice = (key: string) => {
-    const item = (market ?? []).find((m: any) => m.key === key)
-    return item?.currentPrice ?? 0
-  }
+  const activeJobs = jobs.filter((j: ActiveJob) => j.status !== 'COLLECTED')
 
   return (
     <div className="animate-fade-in">
@@ -100,24 +86,24 @@ export default function DashboardPage() {
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <div className="player-level">LVL {avatar.level}</div>
               <div className="robot-capacity">
-                🤖 <span>{(robots ?? []).filter((r: any) => r.status !== 'RETIRED').length}</span>/{avatar.robotSlots}
+                🤖 <span>{robots.filter((r: Robot) => r.status !== 'RETIRED').length}</span>/{avatar.robotSlots}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Status row */}
-      {(repairRobots?.length > 0) && (
+      {/* Repair warning */}
+      {repairRobots.length > 0 && (
         <div className="card card-danger" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 24 }}>⚠️</span>
             <div>
               <div style={{ fontWeight: 700, color: 'var(--color-danger)' }}>
-                {repairRobots.length} robot{repairRobots.length > 1 ? 's' : ''} need{repairRobots.length === 1 ? 's' : ''} repair
+                {repairRobots.length} robot{repairRobots.length > 1 ? 's' : ''} need repair
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                {repairRobots.map((r: any) => r.name).join(', ')}
+                {repairRobots.map((r: Robot) => r.name).join(', ')}
               </div>
             </div>
             <Link href="/robots" className="btn btn-danger btn-sm" style={{ marginLeft: 'auto' }}>
@@ -132,7 +118,7 @@ export default function DashboardPage() {
         {[
           { label: 'Total Produced', value: formatNumber(avatar?.totalProduced ?? 0), icon: '🏭' },
           { label: 'Level', value: avatar?.level ?? 1, icon: '⭐' },
-          { label: 'Active Robots', value: `${activeRobots.length}/${(robots ?? []).length}`, icon: '⚙️' },
+          { label: 'Active Robots', value: `${activeRobots.length}/${robots.length}`, icon: '⚙️' },
           { label: 'Total Jobs', value: formatNumber(avatar?.totalJobs ?? 0), icon: '✅' },
         ].map(stat => (
           <div key={stat.label} className="card" style={{ textAlign: 'center' }}>
@@ -149,7 +135,7 @@ export default function DashboardPage() {
           {/* Active Jobs */}
           <div style={{ marginBottom: 24 }}>
             <div className="section-title">Active Jobs</div>
-            {activeRobots.length === 0 ? (
+            {activeJobs.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: 32 }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>😴</div>
                 <div style={{ color: 'var(--text-muted)' }}>No active jobs</div>
@@ -159,14 +145,18 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {activeRobots.map((r: any) => <ActiveJobCard key={r.id} robot={r} />)}
+                {activeJobs.map((j: ActiveJob) => {
+                  const robot = robots.find((r: Robot) => r.id === j.robotId)
+                  if (!robot) return null
+                  return <ActiveJobCard key={j.id} robot={robot} job={j} />
+                })}
               </div>
             )}
 
             {/* Idle robots */}
             {idleRobots.length > 0 && (
               <div style={{ marginTop: 12 }}>
-                {idleRobots.map((r: any) => (
+                {idleRobots.map((r: Robot) => (
                   <div key={r.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', marginBottom: 8 }}>
                     <span className="status-dot idle"></span>
                     <div style={{ flex: 1 }}>
@@ -188,25 +178,20 @@ export default function DashboardPage() {
             <div className="section-title">Resources</div>
             <div className="card">
               {KEY_RESOURCES.map(key => {
-                const amount = getInv(key)
-                const price = getPrice(key)
-                const icons: Record<string, string> = { IRON: '🔩', COPPER: '🔶', SILICON: '💠', ENERGY: '⚡', TITANIUM: '🔷' }
-                const colors: Record<string, string> = { IRON: 'var(--res-iron)', COPPER: 'var(--res-copper)', SILICON: 'var(--res-silicon)', ENERGY: 'var(--res-energy)', TITANIUM: 'var(--res-titanium)' }
+                const amount = inventory[key] ?? 0
+                const meta = RESOURCE_META[key]
                 return (
                   <div key={key} className="resource-row" style={{ borderBottom: key !== 'TITANIUM' ? '1px solid var(--border-dim)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 18 }}>{icons[key]}</span>
+                      <span style={{ fontSize: 18 }}>{meta.icon}</span>
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: colors[key] }}>{key}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>${price.toFixed(4)}/unit</div>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: meta.color }}>{key}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>${meta.basePrice.toFixed(4)}/unit</div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--text-bright)' }}>
                         {formatNumber(amount)}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        ${(amount * price).toFixed(3)}
                       </div>
                     </div>
                   </div>
