@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const inventoryMap = Object.fromEntries(userInventory.map((i: any) => [i.resourceId, i.amount]))
 
   return ok(
-    resources.map(r => ({
+    resources.map((r: any) => ({
       id: r.id, key: r.key, name: r.name, symbol: r.symbol,
       icon: r.icon, color: r.color, category: r.category,
       currentPrice: r.currentPrice, basePrice: r.basePrice,
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       priceChange24h: r.priceHistory.length >= 2
         ? ((r.currentPrice - r.priceHistory[r.priceHistory.length - 1].price) / r.priceHistory[r.priceHistory.length - 1].price) * 100
         : 0,
-      history: [...r.priceHistory].reverse().map(h => ({ price: h.price, time: h.recordedAt })),
+      history: [...r.priceHistory].reverse().map((h: any) => ({ price: h.price, time: h.recordedAt })),
     }))
   )
 }

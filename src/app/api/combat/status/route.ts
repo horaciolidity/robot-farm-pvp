@@ -53,12 +53,12 @@ export async function GET(req: NextRequest) {
     },
   ]
 
-  const allMet = checks.every(c => c.met)
+  const allMet = checks.every((c: any) => c.met)
 
   return ok({
     locked: !allMet,
     allMet,
     checks,
-    progressPercent: Math.round((checks.filter(c => c.met).length / checks.length) * 100),
+    progressPercent: Math.round((checks.filter((c: any) => c.met).length / checks.length) * 100),
   })
 }
