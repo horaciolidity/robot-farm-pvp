@@ -180,7 +180,7 @@ export default function WorkPage() {
                 <div key={robot.id} className="card" style={{ borderColor: 'rgba(0,212,255,0.1)' }}>
                   <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
                     <div className="robot-avatar" style={{ fontSize: 28 }}>
-                      {{ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' }[type?.key ?? ''] ?? '🤖'}
+                      {({ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' } as Record<string, string>)[type?.key ?? ''] ?? '🤖'}
                     </div>
                     <div style={{ flex: 1 }}>
                       <h3>{robot.name}</h3>

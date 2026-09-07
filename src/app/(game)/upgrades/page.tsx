@@ -97,7 +97,7 @@ export default function UpgradesPage() {
           <div className="card card-accent" style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
               <div className="robot-avatar" style={{ width: 56, height: 56, fontSize: 28 }}>
-                {{ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' }[robot.robotType?.key ?? ''] ?? '🤖'}
+                {({ MINER: '⛏️', FARMER: '🌾', COLLECTOR: '🔍', WORKER: '🔬' } as Record<string, string>)[robot.robotType?.key ?? ''] ?? '🤖'}
               </div>
               <div>
                 <h2 style={{ fontSize: 18, marginBottom: 2 }}>{robot.name}</h2>
