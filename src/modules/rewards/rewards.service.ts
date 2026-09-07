@@ -51,7 +51,7 @@ export async function grantAchievement(
   if (achievement.rewards.length > 0) {
     await addResources(
       userId,
-      achievement.rewards.map(r => ({ resourceId: r.resourceId, amount: r.amount }))
+      achievement.rewards.map((r: any) => ({ resourceId: r.resourceId, amount: r.amount }))
     )
   }
 
@@ -108,7 +108,7 @@ export async function getUserAchievements(userId: string) {
     orderBy: { category: 'asc' },
   })
 
-  return allAchievements.map(a => ({
+  return allAchievements.map((a: any) => ({
     ...a,
     unlocked: a.unlocked.length > 0,
     unlockedAt: a.unlocked[0]?.unlockedAt ?? null,

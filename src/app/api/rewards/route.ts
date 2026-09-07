@@ -16,10 +16,10 @@ export async function GET(req: NextRequest) {
   })
 
   return ok(
-    allAchievements.map(a => ({
+    allAchievements.map((a: any) => ({
       id: a.id, key: a.key, title: a.title, description: a.description,
       icon: a.icon, category: a.category, xpReward: a.xpReward,
-      rewards: a.rewards.map(r => ({ name: r.resource.name, icon: r.resource.icon, amount: r.amount })),
+      rewards: a.rewards.map((r: any) => ({ name: r.resource.name, icon: r.resource.icon, amount: r.amount })),
       unlocked: a.unlocked.length > 0,
       unlockedAt: a.unlocked[0]?.unlockedAt ?? null,
     }))

@@ -41,7 +41,7 @@ export function calculateJobConsumptions(
   const efficiencySaving = UPGRADE_DEFINITIONS.EFFICIENCY[robot.upgradeEfficiency]?.value ?? 0
   const multiplier = 1 - efficiencySaving
 
-  return robot.robotType.consumptions.map(c => ({
+  return robot.robotType.consumptions.map((c: any) => ({
     resourceId: c.resourceId,
     amount: Math.max(0, c.amountPerJob * multiplier),
   }))

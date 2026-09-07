@@ -105,7 +105,7 @@ export async function giveStarterResources(userId: string) {
     where: { key: { in: Object.keys(STARTER_RESOURCES) } },
   })
 
-  const additions = resources.map(r => ({
+  const additions = resources.map((r: any) => ({
     resourceId: r.id,
     amount: STARTER_RESOURCES[r.key] ?? 0,
   }))

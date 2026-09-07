@@ -76,7 +76,7 @@ export async function POST(
         outputResourceId: robot.robotType.producedResourceId,
         expectedAmount,
         consumptions: {
-          create: consumptions.map(c => ({
+          create: consumptions.map((c: any) => ({
             resourceId: c.resourceId,
             amount: c.amount,
           })),
@@ -186,11 +186,11 @@ export async function POST(
     const costPerPoint = repairCostPerPoint(robot.level)
 
     // Resolve resourceIds for repair costs
-    const resourceKeys = costPerPoint.map(c => c.resourceKey)
+    const resourceKeys = costPerPoint.map((c: any) => c.resourceKey)
     const resources = await prisma.resource.findMany({ where: { key: { in: resourceKeys } } })
-    const resourceMap = Object.fromEntries(resources.map(r => [r.key, r]))
+    const resourceMap = Object.fromEntries(resources.map((r: any) => [r.key, r]))
 
-    const deductions = costPerPoint.map(c => ({
+    const deductions = costPerPoint.map((c: any) => ({
       resourceId: resourceMap[c.resourceKey].id,
       amount: c.amount * pointsToRepair,
     }))
@@ -236,11 +236,11 @@ export async function POST(
     if (!nextUpgrade) return badRequest('No upgrade available')
 
     // Resolve resources
-    const resourceKeys = nextUpgrade.cost.map(c => c.resourceKey)
+    const resourceKeys = nextUpgrade.cost.map((c: any) => c.resourceKey)
     const resources = await prisma.resource.findMany({ where: { key: { in: resourceKeys } } })
-    const resourceMap = Object.fromEntries(resources.map(r => [r.key, r]))
+    const resourceMap = Object.fromEntries(resources.map((r: any) => [r.key, r]))
 
-    const deductions = nextUpgrade.cost.map(c => ({
+    const deductions = nextUpgrade.cost.map((c: any) => ({
       resourceId: resourceMap[c.resourceKey].id,
       amount: c.amount,
     }))

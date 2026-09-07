@@ -43,7 +43,7 @@ export async function getMarketData() {
     orderBy: { category: 'asc' },
   })
 
-  return resources.map(r => ({
+  return resources.map((r: any) => ({
     id: r.id,
     key: r.key,
     name: r.name,
@@ -56,7 +56,7 @@ export async function getMarketData() {
     priceChange24h: r.priceHistory.length >= 2
       ? ((r.currentPrice - r.priceHistory[r.priceHistory.length - 1].price) / r.priceHistory[r.priceHistory.length - 1].price) * 100
       : 0,
-    history: r.priceHistory.reverse().map(h => ({
+    history: r.priceHistory.reverse().map((h: any) => ({
       price: h.price,
       time: h.recordedAt,
     })),

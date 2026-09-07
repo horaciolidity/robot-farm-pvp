@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Deduct acquisition costs
-  const deductions = robotType.acquisitionCosts.map(c => ({
+  const deductions = robotType.acquisitionCosts.map((c: any) => ({
     resourceId: c.resourceId,
     amount: c.amount,
   }))

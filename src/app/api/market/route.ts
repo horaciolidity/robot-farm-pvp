@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   })
 
   const userInventory = await prisma.inventory.findMany({ where: { userId: auth.sub } })
-  const inventoryMap = Object.fromEntries(userInventory.map(i => [i.resourceId, i.amount]))
+  const inventoryMap = Object.fromEntries(userInventory.map((i: any) => [i.resourceId, i.amount]))
 
   return ok(
     resources.map(r => ({
