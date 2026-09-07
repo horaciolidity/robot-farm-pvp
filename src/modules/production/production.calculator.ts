@@ -82,7 +82,7 @@ export function getNetProductionValue(
   const gross = output * robot.robotType.producedResource.currentPrice
 
   const consumptions = calculateJobConsumptions(robot as any)
-  const cost = consumptions.reduce((sum, c) => {
+  const cost = consumptions.reduce((sum: number, c: any) => {
     const match = robot.robotType.consumptions.find(tc => tc.resourceId === c.resourceId)
     return sum + (match ? c.amount * (match as any).resource.currentPrice : 0)
   }, 0)

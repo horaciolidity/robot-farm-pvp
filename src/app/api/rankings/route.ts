@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
   return ok({
     type,
-    rankings: rankings.map((r, i) => ({ ...r, rank: i + 1, isCurrentUser: r.userId === auth.sub })),
+    rankings: rankings.map((r: any, i: number) => ({ ...r, rank: i + 1, isCurrentUser: r.userId === auth.sub })),
     userRank: userRankIndex >= 0 ? userRankIndex + 1 : null,
   })
 }
