@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { localLogin, hasAvatar } from '@/lib/local-auth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -9,33 +10,31 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      const json = await res.json()
+    const result = localLogin(form.email, form.password)
 
-      if (!res.ok) { setError(json.error ?? 'Login failed'); return }
-
-      localStorage.setItem('rf_token', json.data.token)
-      localStorage.setItem('rf_user', JSON.stringify(json.data.user))
-
-      if (!json.data.hasAvatar) {
-        router.push('/avatar')
-      } else {
-        router.push('/dashboard')
-      }
-    } catch {
-      setError('Connection error. Try again.')
-    } finally {
+    if (!result.ok) {
+      setError(result.error ?? 'Login failed')
       setLoading(false)
+      return
+    }
+
+    // Guardar en formato legacy para compatibilidad con el resto del juego
+    localStorage.setItem('rf_token', `local_${result.session!.userId}`)
+    localStorage.setItem('rf_user', JSON.stringify({
+      id: result.session!.userId,
+      username: result.session!.username,
+      email: result.session!.email,
+    }))
+
+    if (!hasAvatar(result.session!.userId)) {
+      router.push('/avatar')
+    } else {
+      router.push('/dashboard')
     }
   }
 

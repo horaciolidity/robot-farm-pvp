@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { localRegister } from '@/lib/local-auth'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -9,29 +10,28 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      const json = await res.json()
+    const result = localRegister(form.username, form.email, form.password)
 
-      if (!res.ok) { setError(json.error ?? 'Registration failed'); return }
-
-      localStorage.setItem('rf_token', json.data.token)
-      localStorage.setItem('rf_user', JSON.stringify(json.data.user))
-      router.push('/avatar')
-    } catch {
-      setError('Connection error. Try again.')
-    } finally {
+    if (!result.ok) {
+      setError(result.error ?? 'Registration failed')
       setLoading(false)
+      return
     }
+
+    // Guardar también en formato legacy para compatibilidad con el resto del juego
+    localStorage.setItem('rf_token', `local_${result.session!.userId}`)
+    localStorage.setItem('rf_user', JSON.stringify({
+      id: result.session!.userId,
+      username: result.session!.username,
+      email: result.session!.email,
+    }))
+
+    router.push('/avatar')
   }
 
   return (

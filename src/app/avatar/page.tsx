@@ -33,6 +33,36 @@ const AVATAR_TYPES = [
   },
 ]
 
+// Inventario inicial según tipo de avatar
+function getStarterInventory(avatarType: string) {
+  const base = { IRON: 500, ENERGY: 200, COPPER: 100, SILICON: 50, TITANIUM: 0, FOOD: 100, MAINTENANCE: 30 }
+  if (avatarType === 'ENGINEER') base.MAINTENANCE += 50
+  if (avatarType === 'HACKER') base.SILICON += 150
+  if (avatarType === 'MERCHANT') base.IRON += 200
+  return base
+}
+
+// Robot inicial
+function getStarterRobot(userId: string) {
+  return {
+    id: `robot_${Date.now()}`,
+    userId,
+    name: 'Miner Bot MK-I',
+    robotTypeKey: 'MINER',
+    status: 'IDLE',
+    level: 1,
+    experience: 0,
+    durability: 100,
+    lifetimeWear: 0,
+    upgradeProduction: 0,
+    upgradeEfficiency: 0,
+    upgradeEnergyCapacity: 0,
+    upgradeDurability: 0,
+    upgradeSpeed: 0,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 export default function AvatarPage() {
   const router = useRouter()
   const [selected, setSelected] = useState<string | null>(null)
@@ -40,7 +70,7 @@ export default function AvatarPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleCreate() {
+  function handleCreate() {
     if (!selected || name.trim().length < 2) {
       setError('Choose an avatar type and enter a name (min. 2 characters)')
       return
@@ -50,19 +80,41 @@ export default function AvatarPage() {
     setError('')
 
     try {
-      const token = localStorage.getItem('rf_token')
-      const res = await fetch('/api/avatar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: name.trim(), avatarType: selected }),
-      })
-      const json = await res.json()
+      const userRaw = localStorage.getItem('rf_user')
+      const user = userRaw ? JSON.parse(userRaw) : null
+      if (!user) { setError('Session not found. Please register again.'); setLoading(false); return }
 
-      if (!res.ok) { setError(json.error ?? 'Failed'); return }
+      const avatar = {
+        id: `avatar_${Date.now()}`,
+        userId: user.id,
+        name: name.trim(),
+        avatarType: selected,
+        level: 1,
+        experience: 0,
+        totalXP: 0,
+        robotSlots: 2,
+        expansionLevel: 0,
+        totalProduced: 0,
+        totalJobs: 0,
+        totalUpgrades: 0,
+        createdAt: new Date().toISOString(),
+      }
+
+      // Guardar avatar
+      localStorage.setItem(`rf_avatar_${user.id}`, JSON.stringify(avatar))
+
+      // Guardar inventario inicial
+      const inventory = getStarterInventory(selected)
+      localStorage.setItem(`rf_inventory_${user.id}`, JSON.stringify(inventory))
+
+      // Guardar robot inicial
+      const robot = getStarterRobot(user.id)
+      const robots = [robot]
+      localStorage.setItem(`rf_robots_${user.id}`, JSON.stringify(robots))
+
       router.push('/dashboard')
     } catch {
-      setError('Connection error')
-    } finally {
+      setError('Error creating avatar')
       setLoading(false)
     }
   }
@@ -124,7 +176,7 @@ export default function AvatarPage() {
         </button>
 
         <p className="text-center text-muted text-sm" style={{ marginTop: 16 }}>
-          🎁 You'll receive a free Miner Robot to start your empire
+          🎁 You&apos;ll receive a free Miner Robot to start your empire
         </p>
       </div>
     </div>
