@@ -71,8 +71,8 @@ function RobotCard({ robot, onAction, token }: { robot: any; onAction: () => voi
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
         {[
           { label: 'PRODUCTION', value: `${UPGRADE_DEFINITIONS.PRODUCTION[robot.upgradeProduction]?.value?.toFixed(1)}x`, color: 'var(--accent-primary)' },
-          { label: 'EFFICIENCY', value: `${(UPGRADE_DEFINITIONS.EFFICIENCY[robot.upgradeEfficiency]?.value * 100 ?? 0).toFixed(0)}%`, color: 'var(--color-success)' },
-          { label: 'SPEED', value: `${(UPGRADE_DEFINITIONS.SPEED[robot.upgradeSpeed]?.value * 100 ?? 0).toFixed(0)}%`, color: 'var(--res-silicon)' },
+          { label: 'EFFICIENCY', value: `${((UPGRADE_DEFINITIONS.EFFICIENCY[robot.upgradeEfficiency]?.value ?? 0) * 100).toFixed(0)}%`, color: 'var(--color-success)' },
+          { label: 'SPEED', value: `${((UPGRADE_DEFINITIONS.SPEED[robot.upgradeSpeed]?.value ?? 0) * 100).toFixed(0)}%`, color: 'var(--res-silicon)' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
             <div style={{ fontSize: 15, fontFamily: 'var(--font-display)', color: s.color, fontWeight: 700 }}>{s.value}</div>
