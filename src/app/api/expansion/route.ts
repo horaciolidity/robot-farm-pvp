@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   let canAfford = false
   if (nextExpansion) {
     const userInventory = await prisma.inventory.findMany({ where: { userId: auth.sub } })
-    const inventoryMap = Object.fromEntries(userInventory.map(i => [i.resourceId, i.amount]))
+    const inventoryMap = Object.fromEntries(userInventory.map((i: any) => [i.resourceId, i.amount]))
     canAfford = nextExpansion.costs.every(c => (inventoryMap[c.resourceId] ?? 0) >= c.amount)
   }
 
