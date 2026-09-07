@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Find current user rank
-  const userRankIndex = rankings.findIndex(r => r.userId === auth.sub)
+  const userRankIndex = rankings.findIndex((r: any) => r.userId === auth.sub)
 
   return ok({
     type,

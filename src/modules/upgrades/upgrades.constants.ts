@@ -63,7 +63,7 @@ export function getUpgradeLevel(attribute: UpgradeAttribute, currentLevel: numbe
 
 export function getNextUpgrade(attribute: UpgradeAttribute, currentLevel: number): UpgradeLevel | null {
   const levels = UPGRADE_DEFINITIONS[attribute]
-  const next = levels.find(l => l.level === currentLevel + 1)
+  const next = levels.find((l: any) => l.level === currentLevel + 1)
   return next ?? null
 }
 
