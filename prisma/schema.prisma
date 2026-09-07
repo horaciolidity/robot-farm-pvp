@@ -318,8 +318,16 @@ model MarketOrder {
   @@map("market_orders")
 }
 
-enum OrderType  { BUY SELL }
-enum OrderStatus { OPEN FILLED CANCELLED }
+enum OrderType {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  OPEN
+  FILLED
+  CANCELLED
+}
 
 // ============================================================
 // EXPANSIONS
