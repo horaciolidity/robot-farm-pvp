@@ -640,9 +640,16 @@ h3 { font-size: 1.1rem; }
   100% { transform: translateY(100vh); }
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
 .animate-fade-in { animation: fade-in 0.4s ease forwards; }
 .animate-slide-in { animation: slide-in 0.3s ease forwards; }
 .animate-glow { animation: glow-pulse 2s ease infinite; }
+.animate-shake { animation: shake 0.4s ease-in-out; }
 
 /* Progress bar animated fill */
 .progress-fill.animate { transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }

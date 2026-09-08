@@ -44,11 +44,12 @@ function doUpgradeLocal(robotId: string, attribute: UpgradeAttribute): { ok: boo
   return { ok: true, msg: `${attribute} upgraded to level ${currentLevel + 1}!` }
 }
 
+import { toast } from 'sonner'
+
 export default function UpgradesPage() {
   const [robots, setRobots] = useState<Robot[]>([])
   const [inventory, setInventory] = useState<Record<string, number>>({})
   const [selectedRobot, setSelectedRobot] = useState<string | null>(null)
-  const [msgs, setMsgs] = useState<Record<string, string>>({})
   const [busyKey, setBusyKey] = useState<string | null>(null)
 
   function refresh() {
@@ -64,7 +65,8 @@ export default function UpgradesPage() {
     const key = `${robotId}:${attribute}`
     setBusyKey(key)
     const result = doUpgradeLocal(robotId, attribute)
-    setMsgs(m => ({ ...m, [key]: result.ok ? `✓ ${result.msg}` : `✗ ${result.error}` }))
+    if (result.ok) toast.success(result.msg)
+    else toast.error(result.error)
     setBusyKey(null)
     refresh()
   }
@@ -213,14 +215,6 @@ export default function UpgradesPage() {
                     >
                       {busyKey === key ? 'UPGRADING...' : canAfford ? `⬆ UPGRADE TO LEVEL ${currentLevel + 1}` : '⚠ INSUFFICIENT RESOURCES'}
                     </button>
-                  )}
-
-                  {msgs[key] && (
-                    <div style={{ marginTop: 10, fontSize: 12, padding: '6px 10px', borderRadius: 6,
-                      background: msgs[key].startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                      color: msgs[key].startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                      {msgs[key]}
-                    </div>
                   )}
                 </div>
               )

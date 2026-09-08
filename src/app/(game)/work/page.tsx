@@ -29,12 +29,13 @@ function CountdownBar({ job }: { job: ActiveJob }) {
   )
 }
 
+import { toast } from 'sonner'
+
 export default function WorkPage() {
   const [robots, setRobots] = useState<Robot[]>([])
   const [inventory, setInventory] = useState<Record<string, number>>({})
   const [jobs, setJobs] = useState<ActiveJob[]>([])
   const [loading, setLoading] = useState(true)
-  const [msgs, setMsgs] = useState<Record<string, string>>({})
   const [working, setWorking] = useState<Record<string, boolean>>({})
 
   function refresh() {
@@ -51,28 +52,22 @@ export default function WorkPage() {
     return () => clearInterval(t)
   }, [])
 
-  function setMsg(robotId: string, msg: string) {
-    setMsgs(m => ({ ...m, [robotId]: msg }))
-  }
-
   function handleAssign(robotId: string) {
     setWorking(w => ({ ...w, [robotId]: true }))
-    setMsg(robotId, '')
     const result = startJob(robotId)
-    if (result.ok) { setMsg(robotId, '✓ Job started!'); refresh() }
-    else setMsg(robotId, `✗ ${result.error}`)
+    if (result.ok) { toast.success('Job started!'); refresh() }
+    else toast.error(result.error)
     setWorking(w => ({ ...w, [robotId]: false }))
   }
 
   function handleCollect(robotId: string) {
     setWorking(w => ({ ...w, [robotId]: true }))
-    setMsg(robotId, '')
     const result = doCollect(robotId)
     if (result.ok) {
-      setMsg(robotId, `✓ Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name}!`)
+      toast.success(`Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name}!`)
       refresh()
     } else {
-      setMsg(robotId, `✗ ${result.error}`)
+      toast.error(result.error)
     }
     setWorking(w => ({ ...w, [robotId]: false }))
   }
@@ -135,7 +130,7 @@ export default function WorkPage() {
                       </div>
                     </div>
                     {done ? (
-                      <button className="btn btn-success" disabled={working[robot.id]} onClick={() => handleCollect(robot.id)}>
+                      <button className="btn btn-success animate-glow" disabled={working[robot.id]} onClick={() => handleCollect(robot.id)}>
                         📦 COLLECT
                       </button>
                     ) : (
@@ -147,14 +142,6 @@ export default function WorkPage() {
                   </div>
 
                   <CountdownBar job={job} />
-
-                  {msgs[robot.id] && (
-                    <div style={{ marginTop: 10, fontSize: 13, padding: '8px 12px', borderRadius: 6,
-                      background: msgs[robot.id].startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                      color: msgs[robot.id].startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                      {msgs[robot.id]}
-                    </div>
-                  )}
                 </div>
               )
             })}
@@ -214,14 +201,6 @@ export default function WorkPage() {
                   >
                     {working[robot.id] ? 'STARTING...' : robot.durability < 10 ? '🔧 NEEDS REPAIR FIRST' : '⚙️ START JOB'}
                   </button>
-
-                  {msgs[robot.id] && (
-                    <div style={{ marginTop: 10, fontSize: 13, padding: '8px 12px', borderRadius: 6,
-                      background: msgs[robot.id].startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                      color: msgs[robot.id].startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                      {msgs[robot.id]}
-                    </div>
-                  )}
                 </div>
               )
             })}

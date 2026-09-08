@@ -10,10 +10,11 @@ const ACHIEVEMENTS = [
   { key: 'PRODUCE_1000', title: 'Industrial', desc: 'Produce 1,000 total resources', icon: '🏗️', xp: 500, reward: { resourceKey: 'IRON', amount: 500 }, condition: (av: Avatar) => av.totalProduced >= 1000 },
 ]
 
+import { toast } from 'sonner'
+
 export default function RewardsPage() {
   const [avatar, setAvatar] = useState<Avatar | null>(null)
   const [claimed, setClaimed] = useState<string[]>([])
-  const [msg, setMsg] = useState('')
 
   function refresh() {
     const av = getAvatar()
@@ -36,8 +37,7 @@ export default function RewardsPage() {
       localStorage.setItem(`rf_claimed_${uid}`, JSON.stringify(newClaimed))
       setClaimed(newClaimed)
     }
-    setMsg(`✓ Claimed! ${reward.amount} ${reward.resourceKey} added to inventory.`)
-    setTimeout(() => setMsg(''), 3000)
+    toast.success(`Claimed! ${reward.amount} ${reward.resourceKey} added to inventory.`)
   }
 
   if (!avatar) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
@@ -52,12 +52,6 @@ export default function RewardsPage() {
         <h1 className="page-title">Rewards</h1>
         <p className="page-subtitle">Claim your achievement rewards</p>
       </div>
-
-      {msg && (
-        <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', color: 'var(--color-success)', border: '1px solid rgba(34,197,94,0.2)' }}>
-          {msg}
-        </div>
-      )}
 
       {/* Claimable */}
       {claimable.length > 0 && (

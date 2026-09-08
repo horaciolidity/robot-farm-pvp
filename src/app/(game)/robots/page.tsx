@@ -17,9 +17,10 @@ function CountdownTimer({ completesAt }: { completesAt: string }) {
   return <span>{remaining > 0 ? formatDuration(remaining) : 'READY TO COLLECT'}</span>
 }
 
+import { toast } from 'sonner'
+
 function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | null; onAction: () => void }) {
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState('')
 
   const hasActiveJob = job && job.status === 'RUNNING'
   const jobDone = job && job.status !== 'COLLECTED' && new Date(job.completesAt).getTime() <= Date.now()
@@ -27,24 +28,26 @@ function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | nu
   const durabColor = robot.durability > 50 ? 'var(--color-success)' : robot.durability > 30 ? 'var(--color-warning)' : 'var(--color-danger)'
 
   function doRepair() {
-    setLoading(true); setMsg('')
+    setLoading(true)
     const result = repairRobot(robot.id)
-    setMsg(result.ok ? '✓ Robot repaired!' : `✗ ${result.error}`)
+    if (result.ok) toast.success('Robot repaired!')
+    else toast.error(result.error)
     setLoading(false)
     onAction()
   }
 
   function doCollect() {
-    setLoading(true); setMsg('')
+    setLoading(true)
     const result = collectJob(robot.id)
     if (result.ok) {
-      setMsg(`✓ Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name ?? result.resourceKey}`)
+      toast.success(`Collected ${result.amount?.toFixed(1)} ${RESOURCE_META[result.resourceKey ?? '']?.name ?? result.resourceKey}`)
     } else {
-      setMsg(`✗ ${result.error}`)
+      toast.error(result.error)
     }
     setLoading(false)
     onAction()
   }
+
 
   return (
     <div className={`card`}
@@ -96,10 +99,9 @@ function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | nu
         </div>
       )}
 
-      {/* Actions */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {(jobDone || (job && job.status === 'COMPLETED')) && (
-          <button className="btn btn-success btn-sm" disabled={loading} onClick={doCollect}>
+          <button className="btn btn-success btn-sm animate-glow" disabled={loading} onClick={doCollect}>
             📦 COLLECT
           </button>
         )}
@@ -107,20 +109,12 @@ function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | nu
           <Link href="/work" className="btn btn-primary btn-sm">⚙️ ASSIGN WORK</Link>
         )}
         {(robot.status === 'NEEDS_REPAIR' || robot.durability < 30) && (
-          <button className="btn btn-danger btn-sm" disabled={loading} onClick={doRepair}>
+          <button className="btn btn-danger btn-sm animate-shake" disabled={loading} onClick={doRepair}>
             🔧 REPAIR
           </button>
         )}
         <Link href="/upgrades" className="btn btn-ghost btn-sm">⬆ UPGRADES</Link>
       </div>
-
-      {msg && (
-        <div style={{ marginTop: 10, fontSize: 12, padding: '6px 10px', borderRadius: 6,
-          background: msg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-          color: msg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)' }}>
-          {msg}
-        </div>
-      )}
     </div>
   )
 }
@@ -150,9 +144,10 @@ export default function RobotsPage() {
   }, [])
 
   function handleAcquire(typeKey: string) {
-    setAcquiring(true); setAcquireMsg('')
+    setAcquiring(true)
     const result = acquireRobot(typeKey)
-    setAcquireMsg(result.ok ? '✓ Robot acquired!' : `✗ ${result.error}`)
+    if (result.ok) toast.success('Robot acquired!')
+    else toast.error(result.error)
     setAcquiring(false)
     refresh()
   }
@@ -204,14 +199,6 @@ export default function RobotsPage() {
       {ownedCount < capacity && (
         <div>
           <div className="section-title">Acquire Robot</div>
-          {acquireMsg && (
-            <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-              background: acquireMsg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-              color: acquireMsg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)',
-              border: `1px solid ${acquireMsg.startsWith('✓') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
-              {acquireMsg}
-            </div>
-          )}
           <div className="grid-2">
             {ROBOT_TYPES.filter(t => !t.isLocked).map(type => {
               const canAfford = type.acquisitionCosts.every((c: any) => (inventory[c.resourceKey] ?? 0) >= c.amount)

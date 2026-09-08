@@ -10,10 +10,11 @@ const EXPANSION_TIERS = [
   { tier: 4, slotsGranted: 10, costs: [{ resourceKey: 'TITANIUM', amount: 1000 }, { resourceKey: 'SILICON', amount: 5000 }] },
 ]
 
+import { toast } from 'sonner'
+
 export default function ExpansionPage() {
   const [avatar, setAvatar] = useState<Avatar | null>(null)
   const [inventory, setInventory] = useState<Record<string, number>>({})
-  const [msg, setMsg] = useState('')
 
   function refresh() {
     setAvatar(getAvatar())
@@ -31,7 +32,7 @@ export default function ExpansionPage() {
     const inv = { ...inventory }
     for (const c of tier.costs) {
       if ((inv[c.resourceKey] ?? 0) < c.amount) {
-        setMsg(`✗ Not enough ${RESOURCE_META[c.resourceKey]?.name}`)
+        toast.error(`Not enough ${RESOURCE_META[c.resourceKey]?.name}`)
         return
       }
     }
@@ -45,7 +46,7 @@ export default function ExpansionPage() {
     }
     const newAvatar = { ...avatar, robotSlots: tier.slotsGranted, expansionLevel: tier.tier }
     saveAvatar(newAvatar)
-    setMsg(`✓ Expanded to ${tier.slotsGranted} robot slots!`)
+    toast.success(`Expanded to ${tier.slotsGranted} robot slots!`)
     refresh()
   }
 
@@ -80,15 +81,6 @@ export default function ExpansionPage() {
           </div>
         </div>
       </div>
-
-      {msg && (
-        <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 8,
-          background: msg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-          color: msg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)',
-          border: `1px solid ${msg.startsWith('✓') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
-          {msg}
-        </div>
-      )}
 
       {/* Expansion tiers */}
       <div className="section-title">Expansion Tiers</div>

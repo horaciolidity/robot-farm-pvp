@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { getInventory, RESOURCE_META } from '@/lib/game-store'
 import { formatNumber } from '@/lib/formatters'
 
+import { toast } from 'sonner'
+
 export default function MarketPage() {
   const [inventory, setInventory] = useState<Record<string, number>>({})
   const [selectedKey, setSelectedKey] = useState<string>('IRON')
   const [tradeAmount, setTradeAmount] = useState('')
-  const [msg, setMsg] = useState('')
 
   useEffect(() => { setInventory(getInventory()) }, [])
 
@@ -18,11 +19,11 @@ export default function MarketPage() {
   const value = amount * (selectedMeta?.basePrice ?? 0)
 
   function handleSell() {
-    if (amount <= 0 || amount > have) { setMsg('⚠ Invalid amount'); return }
+    if (amount <= 0 || amount > have) { toast.error('Invalid amount'); return }
     const inv = getInventory()
     inv[selectedKey] = (inv[selectedKey] ?? 0) - amount
     // Add USDC equivalent as IRON for now (simplification)
-    setMsg(`✓ Sold ${formatNumber(amount)} ${selectedMeta?.name} for $${value.toFixed(4)} USDC`)
+    toast.success(`Sold ${formatNumber(amount)} ${selectedMeta?.name} for $${value.toFixed(4)} USDC`)
     const { default: ls } = { default: localStorage }
     const userRaw = ls.getItem('rf_user')
     if (userRaw) {
@@ -54,7 +55,7 @@ export default function MarketPage() {
               const amt = inventory[key] ?? 0
               return (
                 <button key={key}
-                  onClick={() => { setSelectedKey(key); setMsg(''); setTradeAmount('') }}
+                  onClick={() => { setSelectedKey(key); setTradeAmount('') }}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px',
                     background: selectedKey === key ? 'var(--accent-glow)' : 'transparent',
@@ -108,7 +109,7 @@ export default function MarketPage() {
                 min="0"
                 max={have}
                 value={tradeAmount}
-                onChange={e => { setTradeAmount(e.target.value); setMsg('') }}
+                onChange={e => { setTradeAmount(e.target.value) }}
                 placeholder="0"
               />
             </div>
@@ -131,14 +132,6 @@ export default function MarketPage() {
                 💵 SELL {amount > 0 ? formatNumber(amount) : ''} {selectedMeta?.name}
               </button>
             </div>
-
-            {msg && (
-              <div style={{ marginTop: 12, fontSize: 13, padding: '8px 12px', borderRadius: 6,
-                background: msg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                color: msg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                {msg}
-              </div>
-            )}
           </div>
         </div>
       </div>
