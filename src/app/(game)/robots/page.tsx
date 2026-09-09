@@ -80,6 +80,14 @@ function RobotCard({ robot, job, onAction }: { robot: Robot; job: ActiveJob | nu
         </div>
       </div>
 
+      {/* Combat Stats */}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+        <div title="Health Points">❤️ {robot.hp}/{robot.maxHp ?? robot.hp}</div>
+        <div title="Attack">⚔️ {robot.attack}</div>
+        <div title="Defense">🛡️ {robot.defense}</div>
+        <div title="Speed">⚡ {robot.speed}</div>
+      </div>
+
       {/* Active job */}
       {hasActiveJob && !jobDone && (
         <div style={{ marginBottom: 16 }}>

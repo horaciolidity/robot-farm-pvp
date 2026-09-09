@@ -38,6 +38,12 @@ export interface Robot {
   upgradeEnergyCapacity: number
   upgradeDurability: number
   upgradeSpeed: number
+  // Combat stats
+  hp: number
+  maxHp: number
+  attack: number
+  defense: number
+  speed: number
   createdAt: string
 }
 
@@ -67,6 +73,7 @@ export const ROBOT_TYPES = [
     acquisitionCosts: [] as { resourceKey: string; amount: number }[],
     isLocked: false,
     requiredLevel: 1,
+    baseStats: { hp: 50, attack: 5, defense: 5, speed: 10 },
   },
   {
     key: 'FARMER',
@@ -80,6 +87,7 @@ export const ROBOT_TYPES = [
     acquisitionCosts: [{ resourceKey: 'IRON', amount: 200 }, { resourceKey: 'ENERGY', amount: 100 }],
     isLocked: false,
     requiredLevel: 1,
+    baseStats: { hp: 60, attack: 4, defense: 8, speed: 8 },
   },
   {
     key: 'COLLECTOR',
@@ -93,6 +101,7 @@ export const ROBOT_TYPES = [
     acquisitionCosts: [{ resourceKey: 'IRON', amount: 300 }, { resourceKey: 'COPPER', amount: 100 }],
     isLocked: false,
     requiredLevel: 1,
+    baseStats: { hp: 45, attack: 7, defense: 4, speed: 15 },
   },
   {
     key: 'WORKER',
@@ -106,6 +115,7 @@ export const ROBOT_TYPES = [
     acquisitionCosts: [{ resourceKey: 'IRON', amount: 500 }, { resourceKey: 'COPPER', amount: 200 }, { resourceKey: 'SILICON', amount: 50 }],
     isLocked: false,
     requiredLevel: 2,
+    baseStats: { hp: 80, attack: 6, defense: 10, speed: 5 },
   },
   {
     key: 'COMBAT',
@@ -119,6 +129,7 @@ export const ROBOT_TYPES = [
     acquisitionCosts: [{ resourceKey: 'TITANIUM', amount: 1000 }],
     isLocked: true,
     requiredLevel: 10,
+    baseStats: { hp: 200, attack: 25, defense: 15, speed: 20 },
   },
 ]
 
@@ -220,6 +231,11 @@ export function acquireRobot(typeKey: string): { ok: boolean; error?: string; ro
     upgradeEnergyCapacity: 0,
     upgradeDurability: 0,
     upgradeSpeed: 0,
+    hp: type.baseStats?.hp ?? 50,
+    maxHp: type.baseStats?.hp ?? 50,
+    attack: type.baseStats?.attack ?? 5,
+    defense: type.baseStats?.defense ?? 5,
+    speed: type.baseStats?.speed ?? 10,
     createdAt: new Date().toISOString(),
   }
   saveRobots([...robots, robot])

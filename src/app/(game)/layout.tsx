@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { href: '/expansion',  icon: '🏗️', label: 'Expansion',  section: 'economy' },
   { href: '/rankings',   icon: '🏆', label: 'Rankings',    section: 'social' },
   { href: '/rewards',    icon: '🎖️', label: 'Rewards',    section: 'social' },
-  { href: '/combat',     icon: '⚔️', label: 'Combat',     section: 'future', locked: true },
+  { href: '/arena',      icon: '⚔️', label: 'Arena (PvP)',  section: 'future' },
 ]
 
 export default function GameLayout({ children }: { children: React.ReactNode }) {
